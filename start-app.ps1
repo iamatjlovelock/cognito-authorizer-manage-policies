@@ -1,7 +1,9 @@
+
+
 # Start the Cognito Authorizer application
 # This script starts both the backend API server and the Vite frontend
 
-$projectDir = "$PSScriptRoot\manage-policies"
+$projectDir = "$PSScriptRoot"
 
 # Check if node_modules exists
 if (-not (Test-Path "$projectDir\node_modules")) {
@@ -11,7 +13,7 @@ if (-not (Test-Path "$projectDir\node_modules")) {
     Pop-Location
 }
 
-Write-Host "Starting backend server (port 3001)..." -ForegroundColor Cyan
+Write-Host "Starting backend server (port 3002)..." -ForegroundColor Cyan
 Start-Process -FilePath "cmd" -ArgumentList "/c cd /d `"$projectDir`" && npm run server" -WindowStyle Normal
 
 Write-Host "Starting Vite dev server..." -ForegroundColor Cyan
@@ -19,5 +21,5 @@ Start-Process -FilePath "cmd" -ArgumentList "/c cd /d `"$projectDir`" && npm run
 
 Write-Host ""
 Write-Host "Application started!" -ForegroundColor Green
-Write-Host "  Backend API: http://localhost:3001" -ForegroundColor White
-Write-Host "  Frontend:    http://localhost:5173" -ForegroundColor White
+Write-Host "  Backend API: http://localhost:3002" -ForegroundColor White
+Write-Host "  Frontend:    http://localhost:5175" -ForegroundColor White
