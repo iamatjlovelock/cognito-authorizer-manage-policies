@@ -18,7 +18,7 @@ The UI translates user-friendly form inputs into Cedar policy language and store
 ```
 ┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
 │   React Frontend    │────▶│   Express Backend   │────▶│  Amazon Verified    │
-│   (port 5176)       │     │   (port 3001)       │     │  Permissions        │
+│   (port 5176)       │     │   (port 3002)       │     │  Permissions        │
 │                     │     │                     │     │                     │
 │ - Cloudscape UI     │     │ - Proxies API calls │     │ - Policy Store      │
 │ - Form validation   │     │ - Uses AWS creds    │     │ - Cedar Schema      │
@@ -76,7 +76,7 @@ Output:
 Loaded credentials from ~/.aws/credentials
 Access Key ID: ASIAXXX...
 Has session token: true
-AVP proxy server running on http://localhost:3001
+AVP proxy server running on http://localhost:3002
 ```
 
 **Terminal 2 - Frontend Dev Server:**
@@ -206,9 +206,9 @@ See `docs/policy-translation.md` for detailed translation rules.
 
 ### Port already in use
 
-If port 3001 or 5176 is in use:
+If port 3002 or 5176 is in use:
 ```bash
 # Find and kill the process
-netstat -ano | grep 3001
+netstat -ano | grep 3002
 taskkill /PID <pid> /F
 ```
