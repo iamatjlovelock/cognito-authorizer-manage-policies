@@ -17,6 +17,7 @@ import SideNavigation from '@cloudscape-design/components/side-navigation';
 import Alert from '@cloudscape-design/components/alert';
 import Spinner from '@cloudscape-design/components/spinner';
 import { usePoliciesForGroup, usePolicyMutations } from '../hooks/usePolicies';
+import { useGroupDetails } from '../hooks/useGroups';
 import type { UXPolicy } from '../types/policy';
 
 interface GroupMember {
@@ -346,15 +347,25 @@ function toTablePolicy(policy: UXPolicy): TablePolicy {
   };
 }
 
+function formatDateTime(isoDate: string): string {
+  if (!isoDate) return '-';
+  const date = new Date(isoDate);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+}
+
 function GroupDetailPage() {
   const navigate = useNavigate();
   const { groupName } = useParams<{ groupName: string }>();
 
-  // Group information (mock data - would come from Cognito API)
-  const groupDescription =
-    'Rosie is a UK based project to migrate the Bank of England clearing system onto AWS';
-  const createdTime = 'March 19, 2026 at 07:34 PDT';
-  const lastUpdatedTime = 'March 19, 2026 at 07:34 PDT';
+  // Group information from Cognito
+  const { group, loading: groupLoading, error: groupError } = useGroupDetails(groupName);
 
   // Group members state (mock - would come from Cognito API)
   const [groupMembers] = useState<GroupMember[]>([]);
@@ -430,7 +441,7 @@ function GroupDetailPage() {
       }
       navigation={
         <SideNavigation
-          activeHref="#/groups"
+          activeHref="/groups"
           header={{ href: '#', text: 'Amazon Cognito' }}
           items={[
             { type: 'link', text: 'Overview', href: '#/overview' },
@@ -445,8 +456,8 @@ function GroupDetailPage() {
               text: 'User management',
               defaultExpanded: true,
               items: [
-                { type: 'link', text: 'Users', href: '#/users' },
-                { type: 'link', text: 'Groups', href: '#/groups' },
+                { type: 'link', text: 'Users', href: '/users' },
+                { type: 'link', text: 'Groups', href: '/groups' },
               ],
             },
             {
@@ -462,6 +473,12 @@ function GroupDetailPage() {
               ],
             },
           ]}
+          onFollow={(event) => {
+            if (!event.detail.external && event.detail.href.startsWith('/')) {
+              event.preventDefault();
+              navigate(event.detail.href);
+            }
+          }}
         />
       }
       content={
@@ -469,18 +486,29 @@ function GroupDetailPage() {
           <Header variant="h1" actions={<Button variant="normal">Delete</Button>}>
             Group: {groupName}
           </Header>
+          {groupError && (
+            <Alert type="error" header="Error loading group details">
+              {groupError}
+            </Alert>
+          )}
           {error && (
             <Alert type="error" header="Error loading policies">
               {error}
             </Alert>
           )}
           <SpaceBetween size="l">
-            <GroupInformationContainer
-              groupName={groupName || ''}
-              description={groupDescription}
-              createdTime={createdTime}
-              lastUpdatedTime={lastUpdatedTime}
-            />
+            {groupLoading ? (
+              <Container header={<Header variant="h2">Group information</Header>}>
+                <Spinner /> Loading group details...
+              </Container>
+            ) : (
+              <GroupInformationContainer
+                groupName={groupName || ''}
+                description={group?.description || '-'}
+                createdTime={formatDateTime(group?.createdTime || '')}
+                lastUpdatedTime={formatDateTime(group?.lastModifiedTime || '')}
+              />
+            )}
             <GroupMembersTable
               members={groupMembers}
               selectedMembers={selectedMembers}

@@ -23,7 +23,8 @@ import {
   useUserAttributes,
   useResourceAttributesForType,
 } from '../hooks/useSchema';
-import { usePolicy, usePolicyMutations } from '../hooks/usePolicies';
+import { usePolicy, useUserPolicyMutations } from '../hooks/usePolicies';
+import { fetchApi } from '../services/api-client';
 import type { UXPolicy } from '../types/policy';
 
 interface AttributeCondition {
@@ -40,14 +41,45 @@ interface FormErrors {
   actions?: string;
 }
 
-function EditPolicyPage() {
+interface UserDetails {
+  userId: string;
+}
+
+function EditUserPolicyPage() {
   const navigate = useNavigate();
-  const { groupName, policyId } = useParams<{ groupName: string; policyId: string }>();
+  const { username, policyId } = useParams<{ username: string; policyId: string }>();
+
+  // Fetch user details to get the userId (sub)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  const [userError, setUserError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!username) {
+      setUserLoading(false);
+      return;
+    }
+
+    const loadUser = async () => {
+      setUserLoading(true);
+      setUserError(null);
+      try {
+        const result = await fetchApi<UserDetails>(`/users/${encodeURIComponent(username)}`);
+        setUserId(result.userId);
+      } catch (err) {
+        setUserError(err instanceof Error ? err.message : 'Failed to load user details');
+      } finally {
+        setUserLoading(false);
+      }
+    };
+
+    loadUser();
+  }, [username]);
 
   // Fetch schema and policy from AVP
   const { schema, loading: schemaLoading, error: schemaError } = useSchema();
   const { policy, loading: policyLoading, error: policyError } = usePolicy(policyId);
-  const { updatePolicy, updating, error: updateError } = usePolicyMutations();
+  const { updatePolicy, updating, error: updateError } = useUserPolicyMutations();
 
   const resourceTypes = useResourceTypes(schema);
 
@@ -149,7 +181,7 @@ function EditPolicyPage() {
   };
 
   const handleSave = async () => {
-    if (!validateForm() || !groupName || !policyId) return;
+    if (!validateForm() || !userId || !policyId) return;
 
     const updatedPolicy: UXPolicy = {
       policyId,
@@ -169,15 +201,15 @@ function EditPolicyPage() {
     };
 
     try {
-      await updatePolicy(updatedPolicy, groupName);
-      navigate(`/groups/${groupName}`);
+      await updatePolicy(updatedPolicy, userId);
+      navigate(`/users/${encodeURIComponent(username || '')}`);
     } catch (err) {
       console.error('Failed to update policy:', err);
     }
   };
 
   const handleCancel = () => {
-    navigate(`/groups/${groupName}`);
+    navigate(`/users/${encodeURIComponent(username || '')}`);
   };
 
   const handleResourceTypeChange = (option: SelectProps.Option) => {
@@ -218,8 +250,8 @@ function EditPolicyPage() {
     setConditions(updatedConditions);
   };
 
-  const isLoading = schemaLoading || policyLoading;
-  const loadError = schemaError || policyError;
+  const isLoading = schemaLoading || policyLoading || userLoading;
+  const loadError = schemaError || policyError || userError;
 
   if (isLoading) {
     return (
@@ -244,8 +276,8 @@ function EditPolicyPage() {
             { href: '#', text: 'Amazon Cognito' },
             { href: '#', text: 'User pools' },
             { href: '#', text: 'contracts-management-users' },
-            { href: '/groups', text: 'Groups' },
-            { href: `/groups/${groupName}`, text: groupName || '' },
+            { href: '/users', text: 'Users' },
+            { href: `/users/${encodeURIComponent(username || '')}`, text: `User: ${userId || username}` },
             { href: '#', text: 'Edit authorization policy' },
           ]}
           onFollow={(event) => {
@@ -263,17 +295,17 @@ function EditPolicyPage() {
               <Button variant="link" onClick={handleCancel} disabled={updating}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleSave} disabled={updating || !!loadError}>
+              <Button variant="primary" onClick={handleSave} disabled={updating || !!loadError || !userId}>
                 {updating ? <Spinner /> : 'Save changes'}
               </Button>
             </SpaceBetween>
           }
           header={
             <Header
-              description="Update the authorization policy to control what actions members of this group can perform on specific resource types."
+              description={`Update the authorization policy for this user. The policy uses: principal == Namespace::User::"${userId || '...'}"`}
               variant="h1"
             >
-              Edit authorization policy
+              Edit user authorization policy
             </Header>
           }
         >
@@ -351,7 +383,7 @@ function EditPolicyPage() {
                 </FormField>
 
                 <FormField
-                  description="Select one or more actions that members of this group are permitted to perform on the selected resource type."
+                  description="Select one or more actions that this user is permitted to perform on the selected resource type."
                   label="Actions"
                   errorText={errors.actions}
                 >
@@ -375,7 +407,7 @@ function EditPolicyPage() {
             <Container
               header={
                 <Header
-                  description="Define conditions that compare user attributes against resource attributes. A user must satisfy all conditions to be granted access."
+                  description="Define conditions that compare user attributes against resource attributes. The user must satisfy all conditions to be granted access."
                   variant="h2"
                 >
                   Attribute conditions
@@ -475,7 +507,7 @@ function EditPolicyPage() {
       contentType="form"
       navigation={
         <SideNavigation
-          activeHref="/groups"
+          activeHref="/users"
           header={{ href: '#', text: 'Amazon Cognito' }}
           items={[
             { href: '#/overview', text: 'Overview', type: 'link' },
@@ -519,4 +551,4 @@ function EditPolicyPage() {
   );
 }
 
-export default EditPolicyPage;
+export default EditUserPolicyPage;

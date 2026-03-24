@@ -7,40 +7,24 @@ import Link from '@cloudscape-design/components/link';
 import Box from '@cloudscape-design/components/box';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 import Button from '@cloudscape-design/components/button';
-import TextFilter from '@cloudscape-design/components/text-filter';
-import Alert from '@cloudscape-design/components/alert';
+import Badge from '@cloudscape-design/components/badge';
+import StatusIndicator from '@cloudscape-design/components/status-indicator';
+import Select from '@cloudscape-design/components/select';
+import Input from '@cloudscape-design/components/input';
 import Header from '@cloudscape-design/components/header';
 import Pagination from '@cloudscape-design/components/pagination';
 import SideNavigation from '@cloudscape-design/components/side-navigation';
+import Alert from '@cloudscape-design/components/alert';
 import { fetchApi } from '../services/api-client';
-import { clearSchemaCache } from '../services/schema-service';
 
-interface GroupItem {
-  groupName: string;
-  description: string;
-  precedence: string;
+interface UserItem {
+  username: string;
+  email: string;
+  emailVerified: string;
+  confirmationStatus: string;
+  status: string;
   createdTime: string;
   lastModifiedTime: string;
-}
-
-function formatRelativeTime(isoDate: string): string {
-  if (!isoDate) return '-';
-
-  const date = new Date(isoDate);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffHours < 1) return 'Less than an hour ago';
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
-  if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
-
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 function EmptyState() {
@@ -48,102 +32,113 @@ function EmptyState() {
     <Box color="inherit" textAlign="center">
       <SpaceBetween size="m">
         <Box color="inherit" variant="p">
-          No groups found. Create a group to add permissions to the access token
-          for multiple users.
+          No users found. Create a user to get started.
         </Box>
-        <Button variant="normal">Create group</Button>
+        <Button variant="normal">Create user</Button>
       </SpaceBetween>
     </Box>
   );
 }
 
-function TableFooter() {
-  return (
-    <Alert
-      type="info"
-      header="Set up group-based access control with Amazon Verified Permissions"
-      action={
-        <Button iconName="external" iconAlign="right" variant="normal">
-          Go to Amazon Verified Permissions
-        </Button>
-      }
-    >
-      With Verified Permissions, you can create policies that authorize access
-      to API Gateway with user pool groups.
-    </Alert>
-  );
-}
-
-function ListGroupsPage() {
+function ListUsersPage() {
   const navigate = useNavigate();
-  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItems, setSelectedItems] = useState<GroupItem[]>([]);
-  const [filteringText, setFilteringText] = useState('');
+  const [selectedItems, setSelectedItems] = useState<UserItem[]>([]);
+  const [searchProperty, setSearchProperty] = useState({
+    label: 'User name',
+    value: 'username',
+  });
+  const [searchValue, setSearchValue] = useState('');
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
+  const pageSize = 10;
 
   useEffect(() => {
-    // Clear schema cache so it's refreshed when navigating to group details
-    clearSchemaCache();
-
-    const loadGroups = async () => {
+    const loadUsers = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchApi<{ groups: GroupItem[] }>('/groups');
-        setGroups(response.groups);
+        const response = await fetchApi<{ users: UserItem[] }>('/users');
+        setUsers(response.users);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load groups');
+        setError(err instanceof Error ? err.message : 'Failed to load users');
       } finally {
         setLoading(false);
       }
     };
 
-    loadGroups();
+    loadUsers();
   }, []);
 
-  const handleGroupClick = (groupName: string) => {
-    navigate(`/groups/${encodeURIComponent(groupName)}`);
+  const handleUserClick = (username: string) => {
+    navigate(`/users/${encodeURIComponent(username)}`);
   };
 
-  const filteredItems = groups.filter((item) => {
-    if (!filteringText) return true;
-    const searchText = filteringText.toLowerCase();
-    return (
-      item.groupName.toLowerCase().includes(searchText) ||
-      item.description.toLowerCase().includes(searchText)
-    );
+  const filteredItems = users.filter((item) => {
+    if (!searchValue) return true;
+    const searchText = searchValue.toLowerCase();
+    switch (searchProperty.value) {
+      case 'username':
+        return item.username.toLowerCase().includes(searchText);
+      case 'email':
+        return item.email.toLowerCase().includes(searchText);
+      case 'status':
+        return item.status.toLowerCase().includes(searchText);
+      case 'confirmationStatus':
+        return item.confirmationStatus.toLowerCase().includes(searchText);
+      default:
+        return true;
+    }
   });
+
+  const paginatedItems = filteredItems.slice(
+    (currentPageIndex - 1) * pageSize,
+    currentPageIndex * pageSize
+  );
 
   const columnDefinitions = [
     {
-      id: 'groupName',
-      header: 'Group name',
-      cell: (item: GroupItem) => (
-        <Link variant="primary" onFollow={() => handleGroupClick(item.groupName)}>
-          {item.groupName}
+      id: 'username',
+      header: 'User name',
+      cell: (item: UserItem) => (
+        <Link variant="primary" onFollow={() => handleUserClick(item.username)}>
+          {item.username}
         </Link>
       ),
-      minWidth: 200,
-    },
-    {
-      id: 'description',
-      header: 'Description',
-      cell: (item: GroupItem) => item.description || '-',
       minWidth: 240,
     },
     {
-      id: 'precedence',
-      header: 'Precedence',
-      cell: (item: GroupItem) => item.precedence,
+      id: 'email',
+      header: 'Email address',
+      cell: (item: UserItem) => item.email || '-',
+      minWidth: 200,
+    },
+    {
+      id: 'emailVerified',
+      header: 'Email verified',
+      cell: (item: UserItem) => item.emailVerified,
       minWidth: 140,
     },
     {
-      id: 'createdTime',
-      header: 'Created time',
-      cell: (item: GroupItem) => formatRelativeTime(item.createdTime),
-      minWidth: 200,
+      id: 'confirmationStatus',
+      header: 'Confirmation status',
+      cell: (item: UserItem) => (
+        <Badge color={item.confirmationStatus === 'Confirmed' ? 'green' : 'grey'}>
+          {item.confirmationStatus}
+        </Badge>
+      ),
+      minWidth: 180,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item: UserItem) => (
+        <StatusIndicator type={item.status === 'Enabled' ? 'success' : 'stopped'}>
+          {item.status}
+        </StatusIndicator>
+      ),
+      minWidth: 140,
     },
   ];
 
@@ -156,7 +151,7 @@ function ListGroupsPage() {
             { href: '#', text: 'Amazon Cognito' },
             { href: '#', text: 'User pools' },
             { href: '#', text: 'contracts-management-users' },
-            { href: '/groups', text: 'Groups' },
+            { href: '/users', text: 'Users' },
           ]}
           onFollow={(event) => {
             event.preventDefault();
@@ -168,7 +163,7 @@ function ListGroupsPage() {
       }
       navigation={
         <SideNavigation
-          activeHref="/groups"
+          activeHref="/users"
           header={{ href: '#', text: 'Amazon Cognito' }}
           items={[
             { type: 'link', text: 'Overview', href: '#/overview' },
@@ -211,16 +206,16 @@ function ListGroupsPage() {
       content={
         <>
           {error && (
-            <Alert type="error" header="Error loading groups">
+            <Alert type="error" header="Error loading users">
               {error}
             </Alert>
           )}
           <Table
-            trackBy="groupName"
+            trackBy="username"
             columnDefinitions={columnDefinitions}
-            items={filteredItems}
+            items={paginatedItems}
             loading={loading}
-            loadingText="Loading groups"
+            loadingText="Loading users"
             selectionType="single"
             selectedItems={selectedItems}
             onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
@@ -229,17 +224,35 @@ function ListGroupsPage() {
             variant="full-page"
             empty={<EmptyState />}
             filter={
-              <TextFilter
-                filteringPlaceholder="Filter groups by name and description"
-                filteringText={filteringText}
-                onChange={({ detail }) => setFilteringText(detail.filteringText)}
-              />
+              <SpaceBetween alignItems="center" direction="horizontal" size="xs">
+                <Select
+                  options={[
+                    { label: 'User name', value: 'username' },
+                    { label: 'Email address', value: 'email' },
+                    { label: 'Account status', value: 'status' },
+                    { label: 'Confirmation status', value: 'confirmationStatus' },
+                  ]}
+                  selectedOption={searchProperty}
+                  onChange={({ detail }) =>
+                    setSearchProperty(detail.selectedOption as { label: string; value: string })
+                  }
+                />
+                <Input
+                  placeholder="Search users by attribute"
+                  type="search"
+                  value={searchValue}
+                  onChange={({ detail }) => {
+                    setSearchValue(detail.value);
+                    setCurrentPageIndex(1);
+                  }}
+                />
+              </SpaceBetween>
             }
             header={
               <Header
                 variant="awsui-h1-sticky"
                 counter={loading ? '' : `(${filteredItems.length})`}
-                description="Configure groups and add users. Groups can be used to add permissions to the access token for multiple users."
+                description="View, edit, and create users in your user pool. Users that are enabled and confirmed can sign in to your user pool."
                 info={<Link variant="info">Info</Link>}
                 actions={
                   <SpaceBetween direction="horizontal" size="xs">
@@ -249,29 +262,23 @@ function ListGroupsPage() {
                       onClick={() => window.location.reload()}
                       disabled={loading}
                     />
-                    <Button
-                      variant="normal"
-                      disabled={selectedItems.length === 0}
-                    >
-                      Delete
+                    <Button variant="normal" disabled={selectedItems.length === 0}>
+                      Delete user
                     </Button>
-                    <Button variant="primary">
-                      Create group
-                    </Button>
+                    <Button variant="primary">Create user</Button>
                   </SpaceBetween>
                 }
               >
-                Groups
+                Users
               </Header>
             }
             pagination={
               <Pagination
                 currentPageIndex={currentPageIndex}
-                pagesCount={Math.max(1, Math.ceil(filteredItems.length / 10))}
+                pagesCount={Math.max(1, Math.ceil(filteredItems.length / pageSize))}
                 onChange={({ detail }) => setCurrentPageIndex(detail.currentPageIndex)}
               />
             }
-            footer={<TableFooter />}
           />
         </>
       }
@@ -279,4 +286,4 @@ function ListGroupsPage() {
   );
 }
 
-export default ListGroupsPage;
+export default ListUsersPage;

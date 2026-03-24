@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AppLayout from '@cloudscape-design/components/app-layout';
 import BreadcrumbGroup from '@cloudscape-design/components/breadcrumb-group';
@@ -23,7 +23,8 @@ import {
   useUserAttributes,
   useResourceAttributesForType,
 } from '../hooks/useSchema';
-import { usePolicyMutations } from '../hooks/usePolicies';
+import { useUserPolicyMutations } from '../hooks/usePolicies';
+import { fetchApi } from '../services/api-client';
 import type { UXPolicy } from '../types/policy';
 
 interface ConditionItem {
@@ -46,9 +47,40 @@ interface FormErrors {
   };
 }
 
-function AddPolicyPage() {
+interface UserDetails {
+  userId: string;
+}
+
+function AddUserPolicyPage() {
   const navigate = useNavigate();
-  const { groupName } = useParams<{ groupName: string }>();
+  const { username } = useParams<{ username: string }>();
+
+  // Fetch user details to get the userId (sub)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  const [userError, setUserError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!username) {
+      setUserLoading(false);
+      return;
+    }
+
+    const loadUser = async () => {
+      setUserLoading(true);
+      setUserError(null);
+      try {
+        const result = await fetchApi<UserDetails>(`/users/${encodeURIComponent(username)}`);
+        setUserId(result.userId);
+      } catch (err) {
+        setUserError(err instanceof Error ? err.message : 'Failed to load user details');
+      } finally {
+        setUserLoading(false);
+      }
+    };
+
+    loadUser();
+  }, [username]);
 
   // Fetch schema from AVP
   const { schema, loading: schemaLoading, error: schemaError } = useSchema();
@@ -61,7 +93,7 @@ function AddPolicyPage() {
   const [conditions, setConditions] = useState<ConditionItem[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
 
-  const { createPolicy, creating, error: createError } = usePolicyMutations();
+  const { createPolicy, creating, error: createError } = useUserPolicyMutations();
 
   // Get actions available for selected resource type
   const availableActions = useActionsForResource(schema, resourceType?.value || null);
@@ -172,7 +204,7 @@ function AddPolicyPage() {
   };
 
   const handleSubmit = async () => {
-    if (!validateForm() || !groupName) return;
+    if (!validateForm() || !userId) return;
 
     const policy: UXPolicy = {
       policyName,
@@ -189,15 +221,15 @@ function AddPolicyPage() {
     };
 
     try {
-      await createPolicy(policy, groupName);
-      navigate(`/groups/${groupName}`);
+      await createPolicy(policy, userId);
+      navigate(`/users/${encodeURIComponent(username || '')}`);
     } catch (err) {
       console.error('Failed to create policy:', err);
     }
   };
 
   const handleCancel = () => {
-    navigate(`/groups/${groupName}`);
+    navigate(`/users/${encodeURIComponent(username || '')}`);
   };
 
   const attributeEditorDefinition: AttributeEditorProps.FieldDefinition<ConditionItem>[] = [
@@ -322,14 +354,14 @@ function AddPolicyPage() {
     },
   ];
 
-  if (schemaLoading) {
+  if (schemaLoading || userLoading) {
     return (
       <AppLayout
         content={
           <Container>
             <SpaceBetween size="m" alignItems="center">
               <Spinner size="large" />
-              <Box>Loading schema...</Box>
+              <Box>{userLoading ? 'Loading user...' : 'Loading schema...'}</Box>
             </SpaceBetween>
           </Container>
         }
@@ -345,8 +377,8 @@ function AddPolicyPage() {
             { href: '#', text: 'Amazon Cognito' },
             { href: '#', text: 'User pools' },
             { href: '#', text: 'contracts-management-users' },
-            { href: '/groups', text: 'Groups' },
-            { href: `/groups/${groupName}`, text: groupName || '' },
+            { href: '/users', text: 'Users' },
+            { href: `/users/${encodeURIComponent(username || '')}`, text: `User: ${userId || username}` },
             { href: '#', text: 'Add authorization policy' },
           ]}
           onFollow={(event) => {
@@ -364,17 +396,17 @@ function AddPolicyPage() {
               <Button variant="link" onClick={handleCancel} disabled={creating}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleSubmit} disabled={creating || !!schemaError}>
+              <Button variant="primary" onClick={handleSubmit} disabled={creating || !!schemaError || !!userError || !userId}>
                 {creating ? <Spinner /> : 'Add authorization policy'}
               </Button>
             </SpaceBetween>
           }
           header={
             <Header
-              description="Define a new authorization policy to control what actions members of this group can perform on specific resource types."
+              description={`Define a new authorization policy for this user. The policy will use: principal == Namespace::User::"${userId || '...'}"`}
               variant="h1"
             >
-              Add authorization policy
+              Add user authorization policy
             </Header>
           }
         >
@@ -382,6 +414,11 @@ function AddPolicyPage() {
             {schemaError && (
               <Alert type="error" header="Error loading schema">
                 {schemaError}. Please check your AWS credentials and try again.
+              </Alert>
+            )}
+            {userError && (
+              <Alert type="error" header="Error loading user">
+                {userError}
               </Alert>
             )}
             {createError && (
@@ -445,7 +482,7 @@ function AddPolicyPage() {
                 </FormField>
 
                 <FormField
-                  description="Select one or more actions that members of this group are permitted to perform on the selected resource type."
+                  description="Select one or more actions that this user is permitted to perform on the selected resource type."
                   label="Actions"
                   errorText={errors.actions}
                 >
@@ -469,7 +506,7 @@ function AddPolicyPage() {
             <Container
               header={
                 <Header
-                  description="Define conditions that compare user attributes against resource attributes. A user must satisfy all conditions to be granted access."
+                  description="Define conditions that compare user attributes against resource attributes. The user must satisfy all conditions to be granted access."
                   variant="h2"
                 >
                   Attribute conditions
@@ -508,7 +545,7 @@ function AddPolicyPage() {
       contentType="form"
       navigation={
         <SideNavigation
-          activeHref="/groups"
+          activeHref="/users"
           header={{ href: '#', text: 'Amazon Cognito' }}
           items={[
             { href: '#/overview', text: 'Overview', type: 'link' },
@@ -552,4 +589,4 @@ function AddPolicyPage() {
   );
 }
 
-export default AddPolicyPage;
+export default AddUserPolicyPage;

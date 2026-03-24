@@ -166,8 +166,36 @@ function buildHasChecks(
   return hasChecks;
 }
 
-// Convert UXPolicy to Cedar statement
+// Convert UXPolicy to Cedar statement for a group principal
 export function translateToCedar(policy: UXPolicy, groupName: string, namespace: string, schema?: ParsedSchema): string {
+  return translateToCedarWithPrincipal(
+    policy,
+    `${namespace}::CognitoGroup::"${groupName}"`,
+    'in',
+    namespace,
+    schema
+  );
+}
+
+// Convert UXPolicy to Cedar statement for a user principal
+export function translateToCedarForUser(policy: UXPolicy, userId: string, namespace: string, schema?: ParsedSchema): string {
+  return translateToCedarWithPrincipal(
+    policy,
+    `${namespace}::User::"${userId}"`,
+    '==',
+    namespace,
+    schema
+  );
+}
+
+// Internal function to build Cedar statement with configurable principal
+function translateToCedarWithPrincipal(
+  policy: UXPolicy,
+  principalRef: string,
+  principalOp: string,
+  namespace: string,
+  schema?: ParsedSchema
+): string {
   const lines: string[] = [];
 
   // Annotation with policy name
@@ -175,7 +203,7 @@ export function translateToCedar(policy: UXPolicy, groupName: string, namespace:
 
   // Permit statement
   lines.push('permit (');
-  lines.push(`    principal in ${namespace}::CognitoGroup::"${groupName}",`);
+  lines.push(`    principal ${principalOp} ${principalRef},`);
 
   // Actions
   if (policy.actions.length === 1) {
@@ -308,4 +336,69 @@ export async function updatePolicy(policy: UXPolicy, groupName: string): Promise
 // Delete a policy
 export async function deletePolicy(policyId: string): Promise<void> {
   await fetchApi(`/policies/${policyId}`, { method: 'DELETE' });
+}
+
+// List policies for a specific user (by their sub/userId)
+export async function listPoliciesForUser(userId: string): Promise<UXPolicy[]> {
+  const schema = await fetchSchema();
+
+  const response = await fetchApi<{ policies: PolicyItem[] }>(
+    `/policies?userId=${encodeURIComponent(userId)}&namespace=${encodeURIComponent(schema.namespace)}`
+  );
+
+  const policies: UXPolicy[] = [];
+
+  for (const policyItem of response.policies || []) {
+    if (policyItem.policyId) {
+      // Fetch full policy to get the Cedar statement
+      const fullPolicy = await fetchApi<GetPolicyResponse>(`/policies/${policyItem.policyId}`);
+
+      if (fullPolicy.definition?.static?.statement) {
+        const uxPolicy = parseCedarToUXPolicy(
+          policyItem.policyId,
+          fullPolicy.definition.static.statement,
+          fullPolicy.definition.static.description || '',
+          schema.namespace
+        );
+        if (uxPolicy) {
+          policies.push(uxPolicy);
+        }
+      }
+    }
+  }
+
+  return policies;
+}
+
+// Create a new policy for a user
+export async function createPolicyForUser(policy: UXPolicy, userId: string): Promise<string> {
+  const schema = await fetchSchema();
+  const cedarStatement = translateToCedarForUser(policy, userId, schema.namespace, schema);
+
+  const response = await fetchApi<{ policyId: string }>('/policies', {
+    method: 'POST',
+    body: JSON.stringify({
+      statement: cedarStatement,
+      description: policy.description,
+    }),
+  });
+
+  if (!response.policyId) {
+    throw new Error('Failed to create policy - no policy ID returned');
+  }
+
+  return response.policyId;
+}
+
+// Update a policy for a user (delete and recreate since Cedar policies are immutable)
+export async function updatePolicyForUser(policy: UXPolicy, userId: string): Promise<string> {
+  if (!policy.policyId) {
+    throw new Error('Cannot update policy without policyId');
+  }
+
+  // Delete existing policy
+  await fetchApi(`/policies/${policy.policyId}`, { method: 'DELETE' });
+
+  // Create new policy with updated content
+  return createPolicyForUser(policy, userId);
 }
